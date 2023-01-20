@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-
+require('dotenv').config();
 var packageJson = require("./package.json");
 var fs = require("fs");
 
@@ -13,44 +13,18 @@ global.navigator = function() {
   return null;
 };
 
-var argv = require("yargs")
-  .option("username", {
-    describe: "Username of the user",
+var options = require("yargs")
+  .option("params", {
+    describe: "Params",
     demandOption: true,
     string: true
   })
-  .option("password", {
-    describe: "Password of the user",
-    demandOption: true
+  .option("stage", {
+    describe: "Serverless deploy stage",
+    demandOption: true,
+    default: "dev"
   })
-  .option("user-pool-id", {
-    describe: "Cognito user pool id",
-    demandOption: true
-  })
-  .option("app-client-id", {
-    describe: "Cognito user pool app client id",
-    demandOption: true
-  })
-  .option("cognito-region", {
-    describe: "Cognito region",
-    default: "us-east-1"
-  })
-  .option("identity-pool-id", {
-    describe: "Cognito identity pool id",
-    demandOption: true
-  })
-  .option("invoke-url", {
-    describe: "API Gateway URL",
-    demandOption: true
-  })
-  .option("api-gateway-region", {
-    describe: "API Gateway region",
-    default: "us-east-1"
-  })
-  .option("api-key", {
-    describe: "API Key",
-    default: undefined
-  })
+
   .option("path-template", {
     describe: "API path template",
     demandOption: true
@@ -80,6 +54,17 @@ var argv = require("yargs")
   .version(packageJson.version)
   .wrap(null).argv;
 
+const argv = {
+  userPoolId: process.env.USER_POOL_ID,
+  appClientId: process.env.APP_CLIENT_ID,
+  cognitoRegion: process.env.COGNITO_REGION,
+  identityPoolId: process.env.IDENTITY_POOL_ID,
+  apiKey: process.env.APP_CLIENT_ID,
+  apiGatewayRegion: process.env.API_GATEWAY_REGION,
+  invokeUrl: process.env.INVOKE_URL,
+  username: process.env.USERNAME,
+  password: process.env.PASSWORD
+}
 function authenticate(callback) {
   var poolData = {
     UserPoolId: argv.userPoolId,
@@ -155,33 +140,33 @@ function getCredentials(userTokens, callback) {
 
 function makeRequest(userTokens) {
   console.log("Making API request");
-
-  var apigClient = apigClientFactory.newClient({
+  const clientParams = {
     apiKey: argv.apiKey,
     accessKey: AWS.config.credentials.accessKeyId,
     secretKey: AWS.config.credentials.secretAccessKey,
     sessionToken: AWS.config.credentials.sessionToken,
     region: argv.apiGatewayRegion,
-    invokeUrl: argv.invokeUrl
-  });
+    invokeUrl: argv.invokeUrl + options.stage
+  };
+  var apigClient = apigClientFactory.newClient(clientParams);
 
-  var params = JSON.parse(argv.params);
-  var additionalParams = JSON.parse(argv.additionalParams);
+  var params = JSON.parse(options.params);
+  var additionalParams = JSON.parse(options.additionalParams);
 
   var body = "";
-  if (argv.body.startsWith("@")) {
+  if (options.body.startsWith("@")) {
     // Body from file
-    const bodyFromFile = argv.body.replace(/^@/, "");
+    const bodyFromFile = options.body.replace(/^@/, "");
     const contentFromFile = fs.readFileSync(bodyFromFile);
     body = JSON.parse(contentFromFile);
   }
   else {
-    body = JSON.parse(argv.body);
+    body = JSON.parse(options.body);
   }
 
-  if (argv.accessTokenHeader) {
+  if (options.accessTokenHeader) {
     const tokenHeader = {};
-    tokenHeader[argv.accessTokenHeader] = userTokens.accessToken;
+    tokenHeader[options.accessTokenHeader] = userTokens.accessToken;
     additionalParams.headers = Object.assign(
       {},
       additionalParams.headers,
@@ -190,7 +175,7 @@ function makeRequest(userTokens) {
   }
 
   apigClient
-    .invokeApi(params, argv.pathTemplate, argv.method, additionalParams, body)
+    .invokeApi(params, options.pathTemplate, options.method, additionalParams, body)
     .then(function(result) {
       console.dir({
         status: result.status,
